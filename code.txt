@@ -1,0 +1,125 @@
+import warnings
+warnings.filterwarnings('ignore')
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+
+df = pd.read_csv( "D:/550/accidents.csv" )
+print ("The dataset has %d rows and %d columns" % (df.shape[0] , df.shape[1]))
+df.head()
+
+sns.countplot(y = "severity" , data = df )
+plt.tight_layout()
+plt.show()
+
+
+pd.DataFrame( {"count": df["severity"].value_counts().values } , index = df["severity"].value_counts().index )
+df = df.loc[df["severity"] >  1].loc[df["severity"] < 4]
+
+
+df["month"] = df["time"].apply(lambda x:int(x[:2]))
+df["day"] = df["time"].apply(lambda x:int(x[3:5]))
+df["year"] = df["time"].apply(lambda x:int(x[6:8]))
+df["hour"] =  df["time"].apply(lambda x: int(x[9:11]) if str(x)[15] == 'A' else 12 + int(x[9:11])  )
+df["lon"] = df["lon"].apply(lambda x:abs(x)) #so that multinomialNB works (only with positive features)
+#creating the date at the datetime format (easier to deal with)
+df[ "date" ]= df[["month" , "day" ,"year"]].apply(lambda x:pd.datetime(month = x['month'] , day = x['day']  , year = 2000+x["year"]), axis = 1)
+df["weekday"] =  df["date"].apply(lambda x:x.weekday())
+
+
+
+df2 = df.loc[df["severity"] == 2]
+df3 = df.loc[df["severity"] == 3]
+
+
+xx2 , yy2 = df2["lat"] , -df2["lon"]
+xx3 , yy3 = df3["lat"] , -df3["lon"]
+
+
+pts2 = plt.scatter(xx2,yy2,color = 'b' )
+pts3 = plt.scatter(xx3,yy3,color = 'r' )
+plt.legend((pts2, pts3), ('Severity = 2', 'Severity = 3'),loc='lower left')
+plt.title("Accident Severity Map")
+plt.tight_layout()
+plt.show()
+
+
+#classifiction , hour vs counts
+
+sns.countplot(y = "hour" , data = df , order = range(1,25))
+plt.title("Number of accidents by hour")
+plt.tight_layout()
+plt.show()
+
+
+#classification , month vs count
+
+sns.countplot(y = "month" , data = df)
+plt.title("Number of accidents by month")
+plt.tight_layout()
+plt.show()
+
+
+#classification , weekdays vs count
+
+sns.countplot(y = "weekday" , data = df)
+plt.title("Number of accidents by weekday")
+plt.tight_layout()
+plt.show()
+
+
+severity_by_hour = pd.crosstab(index = df["hour"] , columns = df["severity"] )
+severity_by_hour = pd.DataFrame(severity_by_hour.values)
+severity_by_hour["ratio"] = severity_by_hour.apply(lambda x:x[0]/float(x[1]) , axis = 1)
+severity_by_hour.sort_values(by = "ratio")
+
+
+X = df[["month" , "hour" , "year", "weekday" ,"lon" , "lat"]]
+y = df["severity"].apply(lambda x:x-2) # shifting to 0-1 values instead of 2-3
+
+
+
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
+
+
+
+from sklearn.metrics import *
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning) 
+def printScores(y_test, y_pred, classif_name):    
+    print ("--------------  "  + classif_name + "  ------------------")
+    print ("recall : %0.2f" %  recall_score(y_test, y_pred) )
+    print ("precision : %0.2f" %  precision_score(y_test, y_pred))   
+    print ("f1 : %0.2f" %  f1_score(y_test, y_pred))
+    print ("accuracy : %0.2f" %  accuracy_score(y_test, y_pred))
+    print ("---------------------------------------------------")
+
+
+sev = y.value_counts()
+pd.DataFrame(sev)
+
+
+print ("worst accuracy: " , max(sev)/float(sum(sev)))
+
+
+from sklearn.linear_model import LogisticRegression
+clf = LogisticRegression()
+clf.fit(X_train,y_train)
+y_pred = pd.Series(clf.predict(X_test))
+printScores(y_test, y_pred, "LogisticRegression")
+
+
+from sklearn import tree
+clf = tree.DecisionTreeClassifier()
+clf.fit(X_train,y_train)
+y_pred = clf.predict(X_test)
+printScores(y_test, y_pred, "tree")
+
+
+pd.DataFrame(100*clf.feature_importances_ , index = X_train.columns)
+
+
